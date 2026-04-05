@@ -1,0 +1,6 @@
+# Extra exclusions for AI snapshot export.
+# Syntax: gitignore-style patterns (handled by `pathspec`).
+# This file is applied in addition to .gitignore.
+
+# Large local audio assets
+/sound/
