@@ -126,9 +126,21 @@ class NotePlayer:
     ) -> tuple[np.ndarray, int]:
         """Render resolved samples into one legato-style phrase.
 
-        ``note_duration`` is the nominal duration of each note slot. Adjacent
-        notes start ``note_duration - overlap`` seconds apart, so a small
-        positive ``overlap`` lets the previous note ring into the next one.
+        Formal timing semantics:
+
+        - For non-final samples, the clip length is ``note_duration``.
+        - For the final sample, the clip length is
+          ``note_duration + final_tail``.
+        - Adjacent clip starts are spaced by ``note_duration - overlap``.
+          Therefore ``overlap`` is *contained inside* the nominal note duration;
+          it is not an extra tail appended after the slot.
+        - ``fade_out`` only shapes the end of each clip. It does not extend any
+          clip and does not change the clip start times.
+
+        Ignoring frame-rounding effects, a sequence of ``N`` samples has the
+        theoretical total duration::
+
+            N * note_duration - (N - 1) * overlap + final_tail
         """
         _validate_legato_params(
             note_duration=note_duration,

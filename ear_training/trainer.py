@@ -50,10 +50,21 @@ def absolute_train1(
 ) -> list[TrainRoundResult]:
     """Run the v1 absolute-pitch exercise and return per-round results.
 
-    The exercise first plays several distractor notes as one rendered phrase,
-    then waits for a short silence, then plays one target note. The user enters
-    a guess in the console, and correctness is decided only by pitch class,
-    ignoring octave.
+    The exercise first renders the distractor notes into one legato-style
+    phrase, then waits for a short silence, then plays one target note. The
+    user enters a guess in the console, and correctness is decided only by
+    pitch class, ignoring octave.
+
+    Timing model, ignoring tiny frame-rounding effects:
+
+    - Each distractor note uses ``distract_duration`` as its nominal slot
+      duration.
+    - Adjacent distractor note starts are separated by
+      ``distract_duration - distract_overlap``.
+    - Only the final distractor note receives the extra
+      ``distract_final_tail`` ring-out.
+    - After the distractor phrase finishes, the program waits exactly
+      ``pre_target_gap`` seconds before playing the target note.
 
     Args:
         S: Target pitch-class subset used to draw the question note.

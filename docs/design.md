@@ -1,6 +1,6 @@
 # 设计说明
 
-本文档面向维护者，说明 Ear Training 项目的模块职责、关键数据流、错误处理策略和后续扩展方向。
+本文档面向维护者，说明 Ear Training 项目的模块职责、关键数据流、默认参数位置，以及“连奏式干扰音序列”这套子逻辑的正式语义。
 
 ## 1. 目标与范围
 
@@ -14,23 +14,22 @@
 - GUI
 - MIDI 输入
 - 节奏训练
-- 持久化训练记录
-- 自动评分的录音输入
+- 录音输入与自动评分
 - 完整的和弦/音程训练流程
-- 复杂的事件时间轴抽象（例如 `NoteEvent`）
+- 通用的时间轴事件模型（例如 `NoteEvent`）
 
-代码结构因此刻意保持轻量，并把“样本解析”“播放”“训练流程”分开。
+代码结构因此刻意保持轻量，并把“音名解析”“样本索引”“播放”“训练流程”分开。
 
 ## 2. 总体结构
 
 ```text
-main.py                    命令行入口
-ear_training/__init__.py   包级别导出与便捷 helper
-ear_training/notes.py      音名解析与归一化
+main.py                     命令行入口
+ear_training/__init__.py    包级别导出与便捷 helper
+ear_training/notes.py       音名解析与归一化
 ear_training/sample_bank.py 样本索引与检索
-ear_training/player.py     样本读取、单音播放、连奏序列渲染/播放
-ear_training/trainer.py    训练流程
-export_git_snapshot.py     导出当前工作区快照
+ear_training/player.py      样本读取、单音播放、连奏序列渲染/播放
+ear_training/trainer.py     训练流程
+export_git_snapshot.py      导出当前工作区快照
 ```
 
 总体依赖关系如下：
@@ -71,7 +70,7 @@ NotePlayer
 - 库层抛异常
 - CLI 层决定如何向最终用户展示错误
 
-当前 CLI 中和干扰音听感最相关的参数包括：
+和干扰音听感最相关的 CLI 参数包括：
 
 - `--distract-duration`
 - `--distract-overlap`
@@ -102,10 +101,8 @@ NotePlayer
 关键设计点：
 
 - 内部 canonical 形式统一用升号，例如 `Db -> C#`
-- 训练判定以 pitch class 为准，不在该模块处理中加入训练语义
+- 训练判定以 pitch class 为准，不在该模块中加入训练语义
 - 无法解析时抛 `NoteFormatError`
-
-这是样本层和训练层共用的基础模块。
 
 ### 3.4 `ear_training/sample_bank.py`
 
@@ -122,11 +119,6 @@ NotePlayer
 
 - `SampleInfo`：单个样本的只读描述
 - `SampleBank`：样本索引和查询入口
-
-为什么要单独建这一层：
-
-- 避免播放器直接扫描目录
-- 让训练逻辑只处理“音”和“样本”，不直接处理文件系统细节
 
 ### 3.5 `ear_training/player.py`
 
@@ -147,40 +139,15 @@ NotePlayer
 - 以后扩展和弦/混音/数组级处理更自然
 - 避免继续维护手写 WAV 解析逻辑
 
-#### 新增的连奏接口
+关键公开接口：
 
-当前版本的关键新增接口包括：
-
+- `NotePlayer.play_note(...)`
+- `NotePlayer.play_sample(...)`
 - `NotePlayer.render_legato_sequence(...)`
 - `NotePlayer.play_legato_sequence(...)`
 - `NotePlayer.render_sample_sequence(...)`
 - `NotePlayer.play_sample_sequence(...)`
 - `ear_training.play_legato_sequence(...)`
-
-其中训练流程当前主要使用 `play_sample_sequence(...)`，因为训练层已经先选好了要播放的 `SampleInfo`。
-
-#### 为什么要“先渲染再播放”
-
-旧实现中，干扰音是一个一个独立 `play` 的。这会带来两个问题：
-
-1. 每个音尾都很容易被机械截断
-2. 每次单独启动播放都可能带来设备层面的空隙
-
-现在改为：
-
-1. 先读取若干个样本片段
-2. 在内存中把它们放到同一时间轴上
-3. 允许相邻音有少量重合
-4. 对每个片段结尾做 fade-out
-5. 把整个短句一次性播放
-
-这样能明显改善干扰音的听感。
-
-#### 当前边界
-
-- 连奏接口目前只支持“同一时间轴上的短序列”
-- 还没有正式的和弦接口
-- 还没有引入更通用的事件对象（例如 `NoteEvent`）
 
 ### 3.6 `ear_training/trainer.py`
 
@@ -188,25 +155,14 @@ NotePlayer
 
 - 实现 `absolute_train1`
 - 控制训练轮次、干扰音、目标音和用户输入
-- 负责把训练结果整理成 `TrainRoundResult`
+- 把结果整理成 `TrainRoundResult`
 
-训练流程：
+训练层语义上只关心：
 
-1. 校验集合 `S` 和参数
-2. 随机选择若干干扰音样本
-3. 通过 `play_sample_sequence(...)` 一次性播放整个干扰音短句
-4. 等待 `pre_target_gap`
-5. 从目标集合中选择一个 pitch class
-6. 从该 pitch class 的样本中随机选取一个 concrete sample
-7. 播放目标音
-8. 读取用户输入并归一化
-9. 仅按 pitch class 比较对错
-
-关键点：
-
-- “忽略八度”这一训练规则只在训练层生效
-- 干扰音短句和目标音都通过 `SampleBank` 与 `NotePlayer` 获取/播放
-- `gap_seconds` 作为旧接口兼容别名保留，但语义已退化为 `pre_target_gap`
+- 目标集合 `S`
+- 干扰音短句的听感参数
+- 目标音与用户答案
+- “忽略八度，只比较 pitch class”这条评分规则
 
 ### 3.7 `export_git_snapshot.py`
 
@@ -216,7 +172,7 @@ NotePlayer
 - 默认排除 `.git/` 和 Git ignored 文件
 - 额外应用 `.aiignore` 与 `--exclude`
 
-这个脚本与听音训练本身无关，但它是这个项目的工程工具，目的是让“发当前版本给 AI”这件事更方便、更可重复。
+这个脚本与听音训练本身无关，但它是项目的工程工具，用来让“发当前版本给 AI”这件事更方便、更可重复。
 
 ## 4. 关键数据模型
 
@@ -296,114 +252,243 @@ CLI 输入集合 S
   -> 按 pitch class 判断对错
 ```
 
-### 5.4 `export_git_snapshot.py`
+## 6. 默认参数与其定义位置
 
-```text
-git ls-files
-  -> 生成基础文件集合
-  -> 应用 .aiignore 与 --exclude
-  -> 排除输出归档自身
-  -> 写入 zip/tar
-```
-
-## 6. 默认参数的定义位置
-
-本项目中的默认参数分为两层：
+本项目中的默认参数分为两层。
 
 ### 6.1 CLI 默认值
 
-CLI 默认值定义在 `main.py` 的 `build_parser()` 中。
+CLI 默认值定义在 `main.py` 的 `build_parser()` 中。它们控制“用户在命令行中什么都不传时”的默认行为。
 
-这些值控制“用户在命令行中什么都不传时”的默认行为。  
-和当前听感关系最大的值包括：
+当前默认值：
 
-- `--distract-duration = 0.22`
-- `--distract-overlap = 0.05`
-- `--distract-fade-out = 0.03`
-- `--distract-final-tail = 0.10`
-- `--pre-target-gap = 0.50`
-- `--target-duration = 1.2`
+- `play --duration = 1.0`
+- `play --default-octave = 4`
+
+`absolute_train1` 的 CLI 默认值：
+
+- `--rounds = 5`
+- `--distract-min = 10`
+- `--distract-max = 20`
+- `--distract-duration = DEFAULT_DISTRACT_DURATION = 0.42`
+- `--distract-overlap = DEFAULT_LEGATO_OVERLAP = 0.05`
+- `--distract-fade-out = DEFAULT_LEGATO_FADE_OUT = 0.03`
+- `--distract-final-tail = DEFAULT_LEGATO_FINAL_TAIL = 0.10`
+- `--pre-target-gap = DEFAULT_PRE_TARGET_GAP = 0.50`
+- `--target-duration = DEFAULT_TARGET_DURATION = 1.20`
+- `--default-octave = 4`
 
 ### 6.2 库层默认值
 
-库层默认值定义在函数签名或模块常量中。
+库层默认值定义在具体模块的常量和函数签名里。
 
-例如：
+`ear_training/player.py`：
 
-- `player.py`
-  - `DEFAULT_LEGATO_OVERLAP`
-  - `DEFAULT_LEGATO_FADE_OUT`
-  - `DEFAULT_LEGATO_FINAL_TAIL`
-- `trainer.py`
-  - `DEFAULT_DISTRACT_DURATION`
-  - `DEFAULT_TARGET_DURATION`
-  - `DEFAULT_PRE_TARGET_GAP`
+```python
+DEFAULT_LEGATO_OVERLAP = 0.05
+DEFAULT_LEGATO_FADE_OUT = 0.03
+DEFAULT_LEGATO_FINAL_TAIL = 0.10
+DEFAULT_SEQUENCE_PEAK_LIMIT = 0.98
+```
 
-此外，函数签名本身也带有默认参数，例如：
+`ear_training/trainer.py`：
 
-- `play_legato_sequence(..., overlap=..., fade_out=..., final_tail=...)`
-- `absolute_train1(..., distract_overlap=..., pre_target_gap=...)`
+```python
+DEFAULT_DISTRACT_DURATION = 0.42
+DEFAULT_TARGET_DURATION = 1.2
+DEFAULT_PRE_TARGET_GAP = 0.50
+```
 
-需要注意：CLI 默认值与库函数默认值可以不同。当前 `main.py` 中 `absolute_train1` 的默认轮数为 `5`，而 `trainer.py` 中库函数默认轮数为 `1`。这是有意区分“命令行默认体验”和“库接口最小默认行为”。
+接口签名中的关键默认值：
 
-## 7. 错误处理策略
+- `absolute_train1(..., rounds=1, distract_count_range=(6, 10), ...)`
+- `play_legato_sequence(..., overlap=0.05, fade_out=0.03, final_tail=0.10)`
 
-### 7.1 库层
+需要注意：CLI 默认值和库函数默认值可以不同。当前 `main.py` 中 `absolute_train1` 的默认轮数是 `5`，而 `trainer.py` 中库函数默认轮数是 `1`。这是刻意区分“命令行默认体验”和“库接口最小默认行为”。
 
-库层函数与类方法遇到错误时，优先抛出明确异常：
+## 7. 连奏序列的正式语义
 
-- `NoteFormatError`：音名无法解析
-- `FileNotFoundError` / `NotADirectoryError`：路径问题
-- `InvalidWavFileError`：音频文件损坏、无法读取或音频结构不支持
-- `ValueError`：参数值不合法
+这一节是本文档最重要的“中间定理式说明”。它的目的不是描述用户体验，而是给维护者一条**可检验代码正确性**、也可供其他模块直接引用的结论。
 
-这让库在命令行、测试代码或未来 GUI 中都能被复用。
+### 7.1 参数定义
 
-### 7.2 CLI 层
+对 `render_sample_sequence(samples, note_duration=d, overlap=o, fade_out=f, final_tail=t)`，记：
 
-`main.py` 负责把“用户可修正”的问题转换成更友好的输出：
+- `N = len(samples)`，且 `N >= 1`
+- `d = note_duration`
+- `o = overlap`
+- `f = fade_out`
+- `t = final_tail`
 
-- 参数错误
-- 音名输入错误
-- 路径错误
-- 普通值错误
+约束条件：
 
-默认模式下不打印 traceback；只有传 `--debug` 时才保留完整异常细节。
+- `d > 0`
+- `0 <= o < d`
+- `f >= 0`
+- `t >= 0`
 
-## 8. 当前限制与取舍
+### 7.2 单个片段的读取长度
 
-### 8.1 干扰音连奏仍然是简化模型
+当前实现对每个样本的读取长度不是统一的：
 
-当前实现只是把若干个短片段在时间轴上做重合和淡出。它并不是物理意义上的真实钢琴连奏模拟，也没有踏板建模。
+- 对第 `0 .. N-2` 个样本，读取长度为 `d`
+- 对最后一个样本，读取长度为 `d + t`
 
-这是一种听感优化，而不是乐器建模。
+因此，`final_tail` 只影响最后一个片段，不影响前面任何片段。
 
-### 8.2 采样率不一致时只做轻量 resample
+### 7.3 相邻片段的起点间隔
 
-`player.py` 中包含一个简单的线性插值重采样函数。它的目标是“避免因为偶发采样率不一致而直接失败”，而不是提供高保真离线重采样。
+相邻两个片段不是间隔 `d` 秒开始，而是间隔：
 
-如果以后项目大量依赖重采样质量，再考虑更专业的方案。
+```text
+step = d - o
+```
 
-### 8.3 还没有统一的时间轴事件抽象
+秒开始。
 
-当前为了控制复杂度，没有引入 `NoteEvent` 一类的通用事件模型。  
-等项目开始需要：
+这条语义可以直接回答最容易混淆的问题：
 
-- 和弦
-- 更复杂的旋律片段
-- 动态音量
-- 更灵活的时序
+- `overlap` **包含在** `note_duration` 内部
+- `overlap` 不是“额外加出来的尾巴”
+- `overlap` 的作用是让下一个片段提前 `o` 秒进入前一个片段的尾部
 
-再引入统一事件层会更合适。
+因此，第 `i` 个片段（从 0 开始）的开始时刻是：
 
-## 9. 后续扩展方向
+```text
+start(i) = i * (d - o)
+```
 
-优先级较高的扩展方向包括：
+### 7.4 `fade_out` 的地位
 
-1. 正式的 `play_chord()` 接口
-2. 训练结果持久化
-3. 更丰富的训练模式（音程、和弦、旋律）
-4. GUI 或 TUI
-5. 更通用的时间轴事件抽象
+`fade_out` 不改变任何片段的开始时刻，也不改变任何片段的读取长度。  
+它只在片段尾部的最后一段时间内施加线性包络，使振幅从 1 逐渐减到 0。
 
-如果未来确实开始支持和弦和复杂片段，比较自然的下一步就是引入“一个音频事件 = 音名 + 开始时间 + 时长 + 增益”这样的统一表示。
+所以：
+
+- `fade_out` **包含在片段长度内**
+- `fade_out` **不会额外增加总时长**
+- `fade_out` 只改变尾部的振幅，不改变时间轴布局
+
+### 7.5 整段序列的理论总时长
+
+忽略采样率取整造成的单帧误差，整段连奏序列的理论总时长是：
+
+```text
+T = N * d - (N - 1) * o + t
+```
+
+推导方法很直接：
+
+- 最后一个片段开始于 `(N - 1) * (d - o)`
+- 最后一个片段自身长度为 `d + t`
+
+因此：
+
+```text
+T = (N - 1) * (d - o) + (d + t)
+  = N * d - (N - 1) * o + t
+```
+
+这条公式是本模块最重要的可检验结论之一。只要参数和 `samples` 已知，就可以根据它预估整段短句的大致总长度。
+
+### 7.6 干扰音与目标音之间的整体时间结构
+
+`absolute_train1` 当前不是把“干扰音 + 停顿 + 目标音”渲染成一条完整时间轴，而是分两段：
+
+1. 先调用 `play_sample_sequence(...)` 播放整段干扰音短句
+2. 再 `sleep(pre_target_gap)`
+3. 再单独播放目标音
+
+因此，对训练层来说，整体听感结构是：
+
+```text
+[长度约为 T 的干扰音短句]
+-> [长度为 pre_target_gap 的静默]
+-> [长度约为 target_duration 的目标音]
+```
+
+其中 `pre_target_gap` **不属于** 干扰音短句内部，也**不属于** 目标音自身。
+
+### 7.7 一个具体例子
+
+假设：
+
+- `N = 4`
+- `d = 0.42`
+- `o = 0.05`
+- `t = 0.10`
+
+那么：
+
+- `step = 0.42 - 0.05 = 0.37`
+- 四个片段的起点大约在：
+  - `0.00`
+  - `0.37`
+  - `0.74`
+  - `1.11`
+- 前三个片段长度都是 `0.42`
+- 最后一个片段长度是 `0.52`
+
+所以整段短句理论总时长为：
+
+```text
+T = 4 * 0.42 - 3 * 0.05 + 0.10 = 1.63 秒
+```
+
+如果再设：
+
+- `pre_target_gap = 0.50`
+- `target_duration = 1.20`
+
+那么从第一个干扰音开始，到目标音播放结束，理论总时长大约是：
+
+```text
+1.63 + 0.50 + 1.20 = 3.33 秒
+```
+
+这里仍然忽略帧级取整和设备层极小开销。
+
+## 8. 为什么采用“先渲染再播放”
+
+旧实现中，干扰音是一个一个独立 `play` 的。这会带来两个问题：
+
+1. 每个音尾都容易被机械截断
+2. 每次单独启动播放都可能带来设备层面的空隙
+
+当前实现改为：
+
+1. 先读取若干个样本片段
+2. 在内存中把它们放到同一时间轴上
+3. 允许相邻片段有少量重合
+4. 对每个片段尾部做 fade-out
+5. 对整段短句做峰值限制
+6. 再一次性播放整段短句
+
+这样做的直接收益是：
+
+- 听感更连续
+- 设备只需要启动一次播放
+- 以后扩展和弦或更一般的时间轴合成会更自然
+
+## 9. 当前边界
+
+当前连奏接口只支持“同一时间轴上的短序列”，还没有实现：
+
+- 正式的和弦接口
+- 通用事件时间轴
+- 更复杂的包络模型
+- 踏板或真实钢琴演奏建模
+
+因此，当前实现应被理解为：
+
+**一个针对短干扰音序列的、工程上足够稳定的样本拼接方案。**
+
+## 10. 后续扩展方向
+
+比较自然的扩展路径包括：
+
+- 新增 `play_chord(...)`
+- 引入更一般的时间轴事件模型
+- 把“干扰音短句 + 目标音”一次性渲染成完整轮次音频
+- 给训练加入统计记录、错误分布分析和配置文件
+- 在保持 CLI 的同时增加 GUI
