@@ -13,6 +13,16 @@ from typing import Sequence
 
 from ear_training import absolute_train1, play_note
 from ear_training.notes import NoteFormatError
+from ear_training.player import (
+    DEFAULT_LEGATO_FADE_OUT,
+    DEFAULT_LEGATO_FINAL_TAIL,
+    DEFAULT_LEGATO_OVERLAP,
+)
+from ear_training.trainer import (
+    DEFAULT_DISTRACT_DURATION,
+    DEFAULT_PRE_TARGET_GAP,
+    DEFAULT_TARGET_DURATION,
+)
 
 
 class CliInputError(ValueError):
@@ -35,7 +45,6 @@ def positive_float(value: str) -> float:
     return x
 
 
-
 def non_negative_float(value: str) -> float:
     """Parse a non-negative float for CLI arguments."""
     try:
@@ -45,7 +54,6 @@ def non_negative_float(value: str) -> float:
     if x < 0:
         raise argparse.ArgumentTypeError(f"不能小于 0: {value!r}")
     return x
-
 
 
 def positive_int(value: str) -> int:
@@ -59,7 +67,6 @@ def positive_int(value: str) -> int:
     return x
 
 
-
 def non_negative_int(value: str) -> int:
     """Parse a non-negative integer for CLI arguments."""
     try:
@@ -69,7 +76,6 @@ def non_negative_int(value: str) -> int:
     if x < 0:
         raise argparse.ArgumentTypeError(f"不能小于 0: {value!r}")
     return x
-
 
 
 def octave_int(value: str) -> int:
@@ -133,32 +139,57 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument(
         "--distract-min",
         type=non_negative_int,
-        default=6,
+        default=10,
         help="每轮最少干扰音个数",
     )
     train_parser.add_argument(
         "--distract-max",
         type=non_negative_int,
-        default=10,
+        default=20,
         help="每轮最多干扰音个数",
     )
     train_parser.add_argument(
         "--distract-duration",
         type=positive_float,
-        default=0.22,
-        help="每个干扰音播放时长（秒）",
+        default=DEFAULT_DISTRACT_DURATION,
+        help="每个干扰音的标称时长（秒）",
+    )
+    train_parser.add_argument(
+        "--distract-overlap",
+        type=non_negative_float,
+        default=DEFAULT_LEGATO_OVERLAP,
+        help="相邻干扰音的重合时长（秒）",
+    )
+    train_parser.add_argument(
+        "--distract-fade-out",
+        type=non_negative_float,
+        default=DEFAULT_LEGATO_FADE_OUT,
+        help="每个干扰音结尾的淡出时长（秒）",
+    )
+    train_parser.add_argument(
+        "--distract-final-tail",
+        type=non_negative_float,
+        default=DEFAULT_LEGATO_FINAL_TAIL,
+        help="最后一个干扰音额外保留的尾音时长（秒）",
+    )
+    train_parser.add_argument(
+        "--pre-target-gap",
+        type=non_negative_float,
+        default=DEFAULT_PRE_TARGET_GAP,
+        help="干扰音序列结束到目标音开始前的停顿（秒）",
+    )
+    train_parser.add_argument(
+        "--gap",
+        dest="legacy_gap",
+        type=non_negative_float,
+        default=None,
+        help=argparse.SUPPRESS,
     )
     train_parser.add_argument(
         "--target-duration",
         type=positive_float,
-        default=1.2,
+        default=DEFAULT_TARGET_DURATION,
         help="目标音播放时长（秒）",
-    )
-    train_parser.add_argument(
-        "--gap",
-        type=non_negative_float,
-        default=0.08,
-        help="音与音之间的停顿（秒）",
     )
     train_parser.add_argument(
         "--default-octave",
@@ -190,9 +221,17 @@ def validate_args(args: argparse.Namespace) -> Path:
             raise CliInputError("--set 不能为空")
         if args.distract_min > args.distract_max:
             raise CliInputError("--distract-min 不能大于 --distract-max")
+        if args.distract_overlap >= args.distract_duration:
+            raise CliInputError("--distract-overlap 必须小于 --distract-duration")
+        if args.legacy_gap is not None:
+            if (
+                args.pre_target_gap != DEFAULT_PRE_TARGET_GAP
+                and args.pre_target_gap != args.legacy_gap
+            ):
+                raise CliInputError("不要同时传不同值的 --pre-target-gap 和旧别名 --gap")
+            args.pre_target_gap = args.legacy_gap
 
     return sound_dir
-
 
 
 def run(argv: Sequence[str] | None = None) -> int:
@@ -218,7 +257,10 @@ def run(argv: Sequence[str] | None = None) -> int:
             distract_count_range=(args.distract_min, args.distract_max),
             distract_duration=args.distract_duration,
             target_duration=args.target_duration,
-            gap_seconds=args.gap,
+            distract_overlap=args.distract_overlap,
+            distract_fade_out=args.distract_fade_out,
+            distract_final_tail=args.distract_final_tail,
+            pre_target_gap=args.pre_target_gap,
             default_octave=args.default_octave,
             seed=args.seed,
         )
@@ -235,7 +277,6 @@ def run(argv: Sequence[str] | None = None) -> int:
 def eprint(message: str) -> None:
     """Print a message to stderr."""
     print(message, file=sys.stderr)
-
 
 
 def main(argv: Sequence[str] | None = None) -> None:
