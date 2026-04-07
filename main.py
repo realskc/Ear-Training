@@ -2,7 +2,7 @@
 
 This module owns argument parsing, user-facing validation and error reporting.
 It deliberately keeps audio parsing and training logic in the package modules
-under ``ear_training``.
+under ``ear_training`` and imports its default values from ``ear_training.config``.
 """
 from __future__ import annotations
 
@@ -12,17 +12,21 @@ from pathlib import Path
 from typing import Sequence
 
 from ear_training import absolute_train1, play_note
-from ear_training.notes import NoteFormatError
-from ear_training.player import (
-    DEFAULT_LEGATO_FADE_OUT,
-    DEFAULT_LEGATO_FINAL_TAIL,
-    DEFAULT_LEGATO_OVERLAP,
-)
-from ear_training.trainer import (
+from ear_training.config import (
+    DEFAULT_CLI_DISTRACT_MAX,
+    DEFAULT_CLI_DISTRACT_MIN,
+    DEFAULT_CLI_ROUNDS,
     DEFAULT_DISTRACT_DURATION,
+    DEFAULT_DISTRACT_FADE_OUT,
+    DEFAULT_DISTRACT_FINAL_TAIL,
+    DEFAULT_DISTRACT_OVERLAP,
+    DEFAULT_OCTAVE,
+    DEFAULT_PLAY_DURATION,
     DEFAULT_PRE_TARGET_GAP,
+    DEFAULT_SOUND_DIR,
     DEFAULT_TARGET_DURATION,
 )
+from ear_training.notes import NoteFormatError
 
 
 class CliInputError(ValueError):
@@ -99,7 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sound-dir",
-        default="sound",
+        default=DEFAULT_SOUND_DIR,
         help="sound 目录路径，默认是项目根目录下的 sound",
     )
     parser.add_argument(
@@ -116,11 +120,16 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
     play_parser.add_argument("note", help="音名，如 C4 / C#4 / Db4 / fs / 4-cs")
-    play_parser.add_argument("--duration", type=positive_float, default=1.0, help="播放时长（秒）")
+    play_parser.add_argument(
+        "--duration",
+        type=positive_float,
+        default=DEFAULT_PLAY_DURATION,
+        help="播放时长（秒）",
+    )
     play_parser.add_argument(
         "--default-octave",
         type=octave_int,
-        default=4,
+        default=DEFAULT_OCTAVE,
         help="当 note 不带八度时默认使用的八度",
     )
 
@@ -135,18 +144,18 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="目标音集合 S，例如: C D# F# A 或 C Ds Fs A",
     )
-    train_parser.add_argument("--rounds", type=positive_int, default=5, help="训练轮数")
+    train_parser.add_argument("--rounds", type=positive_int, default=DEFAULT_CLI_ROUNDS, help="训练轮数")
     train_parser.add_argument(
         "--distract-min",
         type=non_negative_int,
-        default=10,
-        help="每轮最少干扰音个数",
+        default=DEFAULT_CLI_DISTRACT_MIN,
+        help="每轮最少干扰音个数，可为 0",
     )
     train_parser.add_argument(
         "--distract-max",
         type=non_negative_int,
-        default=20,
-        help="每轮最多干扰音个数",
+        default=DEFAULT_CLI_DISTRACT_MAX,
+        help="每轮最多干扰音个数，可为 0",
     )
     train_parser.add_argument(
         "--distract-duration",
@@ -157,19 +166,19 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument(
         "--distract-overlap",
         type=non_negative_float,
-        default=DEFAULT_LEGATO_OVERLAP,
+        default=DEFAULT_DISTRACT_OVERLAP,
         help="相邻干扰音的重合时长（秒）",
     )
     train_parser.add_argument(
         "--distract-fade-out",
         type=non_negative_float,
-        default=DEFAULT_LEGATO_FADE_OUT,
+        default=DEFAULT_DISTRACT_FADE_OUT,
         help="每个干扰音结尾的淡出时长（秒）",
     )
     train_parser.add_argument(
         "--distract-final-tail",
         type=non_negative_float,
-        default=DEFAULT_LEGATO_FINAL_TAIL,
+        default=DEFAULT_DISTRACT_FINAL_TAIL,
         help="最后一个干扰音额外保留的尾音时长（秒）",
     )
     train_parser.add_argument(
@@ -194,7 +203,7 @@ def build_parser() -> argparse.ArgumentParser:
     train_parser.add_argument(
         "--default-octave",
         type=octave_int,
-        default=4,
+        default=DEFAULT_OCTAVE,
         help="当集合里的音名不带八度时，用于解析/回退的默认八度",
     )
     train_parser.add_argument("--seed", type=int, default=None, help="随机种子，便于复现实验")

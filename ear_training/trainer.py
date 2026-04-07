@@ -1,4 +1,8 @@
-"""Console-based ear-training flows built on top of the core package modules."""
+"""Console-based ear-training flows built on top of the core package modules.
+
+Default timing and count parameters are imported from ``ear_training.config`` so
+that code and docs can refer to one single source of truth.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,17 +12,20 @@ from pathlib import Path
 from typing import Optional, Sequence
 
 from .notes import NoteFormatError, normalize_pitch_class, normalize_pitch_class_set
-from .player import (
-    DEFAULT_LEGATO_FADE_OUT,
-    DEFAULT_LEGATO_FINAL_TAIL,
-    DEFAULT_LEGATO_OVERLAP,
-    NotePlayer,
+from .config import (
+    DEFAULT_DISTRACT_DURATION,
+    DEFAULT_DISTRACT_FADE_OUT,
+    DEFAULT_DISTRACT_FINAL_TAIL,
+    DEFAULT_DISTRACT_OVERLAP,
+    DEFAULT_LIBRARY_DISTRACT_COUNT_RANGE,
+    DEFAULT_LIBRARY_ROUNDS,
+    DEFAULT_OCTAVE,
+    DEFAULT_PRE_TARGET_GAP,
+    DEFAULT_SOUND_DIR,
+    DEFAULT_TARGET_DURATION,
 )
+from .player import NotePlayer
 from .sample_bank import SampleBank, SampleInfo
-
-DEFAULT_DISTRACT_DURATION = 0.42
-DEFAULT_TARGET_DURATION = 1.2
-DEFAULT_PRE_TARGET_GAP = 0.50
 
 
 @dataclass
@@ -35,17 +42,17 @@ class TrainRoundResult:
 def absolute_train1(
     S: Sequence[str],
     *,
-    sound_dir: str | Path = "sound",
-    rounds: int = 1,
-    distract_count_range: tuple[int, int] = (6, 10),
+    sound_dir: str | Path = DEFAULT_SOUND_DIR,
+    rounds: int = DEFAULT_LIBRARY_ROUNDS,
+    distract_count_range: tuple[int, int] = DEFAULT_LIBRARY_DISTRACT_COUNT_RANGE,
     distract_duration: float = DEFAULT_DISTRACT_DURATION,
     target_duration: float = DEFAULT_TARGET_DURATION,
     gap_seconds: float | None = None,
-    distract_overlap: float = DEFAULT_LEGATO_OVERLAP,
-    distract_fade_out: float = DEFAULT_LEGATO_FADE_OUT,
-    distract_final_tail: float = DEFAULT_LEGATO_FINAL_TAIL,
+    distract_overlap: float = DEFAULT_DISTRACT_OVERLAP,
+    distract_fade_out: float = DEFAULT_DISTRACT_FADE_OUT,
+    distract_final_tail: float = DEFAULT_DISTRACT_FINAL_TAIL,
     pre_target_gap: float = DEFAULT_PRE_TARGET_GAP,
-    default_octave: int = 4,
+    default_octave: int = DEFAULT_OCTAVE,
     seed: Optional[int] = None,
 ) -> list[TrainRoundResult]:
     """Run the v1 absolute-pitch exercise and return per-round results.
@@ -53,7 +60,9 @@ def absolute_train1(
     The exercise first renders the distractor notes into one legato-style
     phrase, then waits for a short silence, then plays one target note. The
     user enters a guess in the console, and correctness is decided only by
-    pitch class, ignoring octave.
+    pitch class, ignoring octave. A round is also allowed to use zero
+    distractors; in that case the function skips phrase playback and goes
+    straight to ``pre_target_gap -> target note``.
 
     Timing model, ignoring tiny frame-rounding effects:
 
@@ -70,7 +79,7 @@ def absolute_train1(
         S: Target pitch-class subset used to draw the question note.
         sound_dir: Directory that contains local WAV samples.
         rounds: Number of rounds to run.
-        distract_count_range: Inclusive range for the number of distractor notes.
+        distract_count_range: Inclusive range for the number of distractor notes. Zero is allowed.
         distract_duration: Nominal duration of each distractor note.
         target_duration: Playback duration of the target note.
         gap_seconds: Deprecated compatibility alias for ``pre_target_gap``.
@@ -116,8 +125,8 @@ def absolute_train1(
     pitch_classes = sample_bank.validate_pitch_class_subset(pitch_classes)
 
     low, high = distract_count_range
-    if low <= 0 or high <= 0 or low > high:
-        raise ValueError("distract_count_range 必须形如 (较小正整数, 较大正整数)")
+    if low < 0 or high < 0 or low > high:
+        raise ValueError("distract_count_range 必须形如 (非负整数, 非负整数) 且前者不大于后者")
 
     results: list[TrainRoundResult] = []
 
@@ -138,14 +147,17 @@ def absolute_train1(
             count=distract_count,
             rng=rng,
         )
-        player.play_sample_sequence(
-            distractor_samples,
-            note_duration=distract_duration,
-            overlap=distract_overlap,
-            fade_out=distract_fade_out,
-            final_tail=distract_final_tail,
-            block=True,
-        )
+        if distractor_samples:
+            player.play_sample_sequence(
+                distractor_samples,
+                note_duration=distract_duration,
+                overlap=distract_overlap,
+                fade_out=distract_fade_out,
+                final_tail=distract_final_tail,
+                block=True,
+            )
+        else:
+            print("本轮不播放干扰音。")
 
         if pre_target_gap > 0:
             time.sleep(pre_target_gap)
@@ -199,8 +211,10 @@ def _choose_distractors(
     rng: random.Random,
 ) -> list[SampleInfo]:
     """Choose a short distractor sequence while avoiding immediate exact repeats."""
-    if count <= 0:
-        raise ValueError("count 必须大于 0")
+    if count < 0:
+        raise ValueError("count 不能小于 0")
+    if count == 0:
+        return []
 
     chosen: list[SampleInfo] = []
     last_sample: Optional[SampleInfo] = None

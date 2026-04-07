@@ -5,7 +5,8 @@ playing them with ``sounddevice``. In addition to single-note playback, it can
 render a short legato-style sequence by placing multiple note clips on one
 timeline with a small overlap and a fade-out, then playing the whole phrase in
 one call. That approach sounds more natural than repeatedly starting and
-stopping the output device for every distractor note.
+stopping the output device for every distractor note. Default timing values are
+imported from ``ear_training.config``.
 """
 from __future__ import annotations
 
@@ -17,12 +18,15 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 
+from .config import (
+    DEFAULT_DISTRACT_FADE_OUT as DEFAULT_LEGATO_FADE_OUT,
+    DEFAULT_DISTRACT_FINAL_TAIL as DEFAULT_LEGATO_FINAL_TAIL,
+    DEFAULT_DISTRACT_OVERLAP as DEFAULT_LEGATO_OVERLAP,
+    DEFAULT_OCTAVE,
+    DEFAULT_SEQUENCE_PEAK_LIMIT,
+    DEFAULT_SOUND_DIR,
+)
 from .sample_bank import SampleBank, SampleInfo
-
-DEFAULT_LEGATO_OVERLAP = 0.05
-DEFAULT_LEGATO_FADE_OUT = 0.03
-DEFAULT_LEGATO_FINAL_TAIL = 0.10
-DEFAULT_SEQUENCE_PEAK_LIMIT = 0.98
 
 
 class UnsupportedWavFormatError(RuntimeError):
@@ -41,7 +45,7 @@ class NotePlayer:
     make distractor notes sound more continuous and less mechanically chopped.
     """
 
-    def __init__(self, sample_bank: SampleBank, default_octave: int = 4) -> None:
+    def __init__(self, sample_bank: SampleBank, default_octave: int = DEFAULT_OCTAVE) -> None:
         """Create a player bound to one sample bank."""
         self.sample_bank = sample_bank
         self.default_octave = default_octave
@@ -104,7 +108,12 @@ class NotePlayer:
         final_tail: float = DEFAULT_LEGATO_FINAL_TAIL,
         block: bool = True,
     ) -> list[SampleInfo]:
-        """Render and play a legato-style phrase from note names."""
+        """Render and play a legato-style phrase from note names.
+
+        An empty note list is allowed and results in a no-op.
+        """
+        if not notes:
+            return []
         audio, sample_rate, resolved_samples = self.render_legato_sequence(
             notes,
             note_duration,
@@ -137,10 +146,13 @@ class NotePlayer:
         - ``fade_out`` only shapes the end of each clip. It does not extend any
           clip and does not change the clip start times.
 
-        Ignoring frame-rounding effects, a sequence of ``N`` samples has the
-        theoretical total duration::
+        Ignoring frame-rounding effects, a non-empty sequence of ``N`` samples
+        has the theoretical total duration::
 
             N * note_duration - (N - 1) * overlap + final_tail
+
+        This renderer requires at least one sample. Higher-level callers that
+        wish to allow an empty phrase should short-circuit before calling it.
         """
         _validate_legato_params(
             note_duration=note_duration,
@@ -150,7 +162,7 @@ class NotePlayer:
         )
 
         if not samples:
-            raise ValueError("samples 不能为空")
+            raise ValueError("render_sample_sequence 需要至少一个 sample")
 
         prepared: list[tuple[np.ndarray, int]] = []
         target_sample_rate: int | None = None
@@ -203,7 +215,12 @@ class NotePlayer:
         final_tail: float = DEFAULT_LEGATO_FINAL_TAIL,
         block: bool = True,
     ) -> None:
-        """Render resolved samples into a phrase and play it."""
+        """Render resolved samples into a phrase and play it.
+
+        An empty sample list is allowed and results in a no-op.
+        """
+        if not samples:
+            return
         audio, sample_rate = self.render_sample_sequence(
             samples,
             note_duration,
@@ -238,7 +255,7 @@ class NotePlayer:
 class LazyPlayer:
     """Convenience wrapper that constructs :class:`SampleBank` and :class:`NotePlayer`."""
 
-    def __init__(self, sound_dir: str | Path = "sound", default_octave: int = 4) -> None:
+    def __init__(self, sound_dir: str | Path = DEFAULT_SOUND_DIR, default_octave: int = DEFAULT_OCTAVE) -> None:
         """Create the underlying sample bank and player lazily for one-off usage."""
         self.sample_bank = SampleBank(sound_dir)
         self.player = NotePlayer(self.sample_bank, default_octave=default_octave)
