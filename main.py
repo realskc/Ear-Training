@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from ear_training import absolute_train1, play_note
+from ear_training import NotePlayer, SampleBank, absolute_train1
 from ear_training.config import (
     DEFAULT_CLI_ROUNDS,
     DEFAULT_DISTRACT_COUNT,
@@ -30,11 +30,6 @@ from ear_training.notes import NoteFormatError
 
 class CliInputError(ValueError):
     """用户可以自行修正的命令行输入错误。"""
-
-
-# -----------------------------------------------------------------------------
-# argparse type helpers
-# -----------------------------------------------------------------------------
 
 
 def positive_float(value: str) -> float:
@@ -87,11 +82,6 @@ def octave_int(value: str) -> int:
     if not 0 <= x <= 8:
         raise argparse.ArgumentTypeError(f"八度必须在 0 到 8 之间: {value!r}")
     return x
-
-
-# -----------------------------------------------------------------------------
-# parser
-# -----------------------------------------------------------------------------
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -148,7 +138,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--distract-count",
         type=non_negative_int,
         default=DEFAULT_DISTRACT_COUNT,
-        help="每轮固定干扰音个数，可为 0",
+        help="每轮干扰音个数，可为 0",
     )
     train_parser.add_argument(
         "--distract-duration",
@@ -181,13 +171,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="干扰音序列结束到目标音开始前的停顿（秒）",
     )
     train_parser.add_argument(
-        "--gap",
-        dest="legacy_gap",
-        type=non_negative_float,
-        default=None,
-        help=argparse.SUPPRESS,
-    )
-    train_parser.add_argument(
         "--target-duration",
         type=positive_float,
         default=DEFAULT_TARGET_DURATION,
@@ -204,11 +187,6 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-# -----------------------------------------------------------------------------
-# validation / execution
-# -----------------------------------------------------------------------------
-
-
 def validate_args(args: argparse.Namespace) -> Path:
     """Validate cross-argument constraints and return the resolved sound dir."""
     sound_dir = Path(args.sound_dir).expanduser()
@@ -223,13 +201,6 @@ def validate_args(args: argparse.Namespace) -> Path:
             raise CliInputError("--set 不能为空")
         if args.distract_overlap >= args.distract_duration:
             raise CliInputError("--distract-overlap 必须小于 --distract-duration")
-        if args.legacy_gap is not None:
-            if (
-                args.pre_target_gap != DEFAULT_PRE_TARGET_GAP
-                and args.pre_target_gap != args.legacy_gap
-            ):
-                raise CliInputError("不要同时传不同值的 --pre-target-gap 和旧别名 --gap")
-            args.pre_target_gap = args.legacy_gap
 
     return sound_dir
 
@@ -241,12 +212,9 @@ def run(argv: Sequence[str] | None = None) -> int:
     sound_dir = validate_args(args)
 
     if args.command == "play":
-        play_note(
-            args.note,
-            args.duration,
-            sound_dir=sound_dir,
-            default_octave=args.default_octave,
-        )
+        sample_bank = SampleBank(sound_dir)
+        player = NotePlayer(sample_bank, default_octave=args.default_octave)
+        player.play_note(args.note, args.duration, block=True)
         return 0
 
     if args.command == "absolute_train1":
@@ -267,11 +235,6 @@ def run(argv: Sequence[str] | None = None) -> int:
         return 0
 
     raise AssertionError(f"未处理的命令: {args.command}")
-
-
-# -----------------------------------------------------------------------------
-# entry point
-# -----------------------------------------------------------------------------
 
 
 def eprint(message: str) -> None:

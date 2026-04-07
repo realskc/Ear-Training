@@ -1,8 +1,7 @@
 """Centralized configuration defaults for the Ear Training project.
 
-This module is the single place where user-facing and library-facing default
-parameters live. Code and documentation should prefer referring to these names
-instead of duplicating literal values in multiple files.
+This module is the single source of truth for default values. Code, CLI help and
+documentation should refer to these names instead of duplicating literals.
 """
 from __future__ import annotations
 
@@ -18,8 +17,14 @@ DEFAULT_PLAY_DURATION = 1.0
 # Training defaults
 # -----------------------------------------------------------------------------
 
+# Library-level defaults used when ``absolute_train1`` is called directly.
 DEFAULT_LIBRARY_ROUNDS = 1
+
+# CLI-level defaults used by ``main.py``.
 DEFAULT_CLI_ROUNDS = 5
+
+# Shared distractor-count default. Zero is allowed at runtime, but the project
+# now uses one fixed count by default instead of a random range.
 DEFAULT_DISTRACT_COUNT = 10
 
 # -----------------------------------------------------------------------------

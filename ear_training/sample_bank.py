@@ -77,18 +77,6 @@ class SampleBank:
         for items in self._by_pitch_class.values():
             items.sort(key=lambda s: s.octave)
 
-    def available_pitch_classes(self) -> list[str]:
-        """Return all pitch classes that have at least one sample in the bank."""
-        return [pc for pc, items in self._by_pitch_class.items() if items]
-
-    def available_notes(self) -> list[str]:
-        """Return all concrete notes currently present in the sample bank."""
-        return [sample.concrete_name for sample in sorted(self._all_samples, key=lambda s: (s.octave, s.pitch_class))]
-
-    def all_samples(self) -> list[SampleInfo]:
-        """Return a shallow copy of all indexed samples."""
-        return list(self._all_samples)
-
     def resolve_sample(
         self,
         note: str,

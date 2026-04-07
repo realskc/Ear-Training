@@ -1,8 +1,4 @@
-"""Console-based ear-training flows built on top of the core package modules.
-
-Default timing and count parameters are imported from ``ear_training.config`` so
-that code and docs can refer to one single source of truth.
-"""
+"""Console-based ear-training flow built on top of the core package modules."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,7 +7,6 @@ import time
 from pathlib import Path
 from typing import Optional, Sequence
 
-from .notes import NoteFormatError, normalize_pitch_class, normalize_pitch_class_set
 from .config import (
     DEFAULT_DISTRACT_COUNT,
     DEFAULT_DISTRACT_DURATION,
@@ -24,6 +19,7 @@ from .config import (
     DEFAULT_SOUND_DIR,
     DEFAULT_TARGET_DURATION,
 )
+from .notes import NoteFormatError, normalize_pitch_class, normalize_pitch_class_set
 from .player import NotePlayer
 from .sample_bank import SampleBank, SampleInfo
 
@@ -47,7 +43,6 @@ def absolute_train1(
     distract_count: int = DEFAULT_DISTRACT_COUNT,
     distract_duration: float = DEFAULT_DISTRACT_DURATION,
     target_duration: float = DEFAULT_TARGET_DURATION,
-    gap_seconds: float | None = None,
     distract_overlap: float = DEFAULT_DISTRACT_OVERLAP,
     distract_fade_out: float = DEFAULT_DISTRACT_FADE_OUT,
     distract_final_tail: float = DEFAULT_DISTRACT_FINAL_TAIL,
@@ -57,47 +52,29 @@ def absolute_train1(
 ) -> list[TrainRoundResult]:
     """Run the v1 absolute-pitch exercise and return per-round results.
 
-    The exercise first renders the distractor notes into one legato-style
-    phrase, then waits for a short silence, then plays one target note. The
-    user enters a guess in the console, and correctness is decided only by
-    pitch class, ignoring octave. A round is also allowed to use zero
-    distractors; in that case the function skips phrase playback and goes
-    straight to ``pre_target_gap -> target note``.
+    One round proceeds as follows:
 
-    Timing model, ignoring tiny frame-rounding effects:
+    1. choose ``distract_count`` random concrete samples
+    2. render them into one legato-style phrase
+    3. wait for ``pre_target_gap`` seconds of silence
+    4. choose and play one target note from the requested pitch-class subset
+    5. read the user's guess and compare only pitch class, ignoring octave
 
-    - Each distractor note uses ``distract_duration`` as its nominal slot
-      duration.
-    - Adjacent distractor note starts are separated by
-      ``distract_duration - distract_overlap``.
-    - Only the final distractor note receives the extra
-      ``distract_final_tail`` ring-out.
-    - After the distractor phrase finishes, the program waits exactly
-      ``pre_target_gap`` seconds before playing the target note.
+    The distractor phrase uses the timing model implemented by
+    :meth:`ear_training.player.NotePlayer.render_sample_sequence`. For ``N >= 1``
+    distractors, the theoretical phrase duration is::
 
-    Args:
-        S: Target pitch-class subset used to draw the question note.
-        sound_dir: Directory that contains local WAV samples.
-        rounds: Number of rounds to run.
-        distract_count: Fixed number of distractor notes per round. Zero is allowed.
-        distract_duration: Nominal duration of each distractor note.
-        target_duration: Playback duration of the target note.
-        gap_seconds: Deprecated compatibility alias for ``pre_target_gap``.
-        distract_overlap: Overlap between adjacent distractor notes.
-        distract_fade_out: Fade-out applied to the end of each distractor note.
-        distract_final_tail: Extra ring-out added to the final distractor note.
-        pre_target_gap: Silence between the distractor phrase and the target note.
-        default_octave: Fallback octave when note strings omit octave information.
-        seed: Optional random seed for reproducible experiments.
+        N * distract_duration - (N - 1) * distract_overlap + distract_final_tail
 
-    Returns:
-        One :class:`TrainRoundResult` per completed round.
+    A round may also use ``distract_count = 0``. In that case the phrase stage is
+    skipped and the round becomes::
 
-    Raises:
-        ValueError: If any duration/count parameter is invalid.
+        pre_target_gap -> target note -> user input
     """
     if rounds <= 0:
         raise ValueError("rounds 必须大于 0")
+    if distract_count < 0:
+        raise ValueError("distract_count 不能小于 0")
     if distract_duration <= 0:
         raise ValueError("distract_duration 必须大于 0")
     if target_duration <= 0:
@@ -113,19 +90,12 @@ def absolute_train1(
     if distract_final_tail < 0:
         raise ValueError("distract_final_tail 不能小于 0")
 
-    if gap_seconds is not None:
-        # Backward-compatible alias from the earlier CLI/library version.
-        pre_target_gap = gap_seconds
-
     rng = random.Random(seed)
     sample_bank = SampleBank(sound_dir)
     player = NotePlayer(sample_bank, default_octave=default_octave)
 
     pitch_classes = normalize_pitch_class_set(S)
     pitch_classes = sample_bank.validate_pitch_class_subset(pitch_classes)
-
-    if distract_count < 0:
-        raise ValueError("distract_count 不能小于 0")
 
     results: list[TrainRoundResult] = []
 
