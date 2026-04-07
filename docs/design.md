@@ -290,7 +290,7 @@ ear_training/config.py
 在当前项目中，默认参数大致分为三类：
 
 1. 通用默认值，例如默认 `sound` 目录、默认八度
-2. 训练流程默认值，例如训练轮数、干扰音数量范围、目标音时长
+2. 训练流程默认值，例如训练轮数、固定干扰音数量、目标音时长
 3. 连奏渲染默认值，例如 overlap、fade-out、final-tail、peak limit
 
 ## 7. 连奏序列的正式语义
@@ -424,7 +424,7 @@ T = (N - 1) * (d - o) + (d + t)
 - 非法音名
 - `--distract-overlap >= --distract-duration`
 - `sound` 目录不存在
-- 干扰音数量范围非法
+- 干扰音数量非法
 
 做法：
 

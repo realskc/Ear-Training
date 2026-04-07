@@ -18,14 +18,9 @@ DEFAULT_PLAY_DURATION = 1.0
 # Training defaults
 # -----------------------------------------------------------------------------
 
-# Library-level defaults used when ``absolute_train1`` is called directly.
 DEFAULT_LIBRARY_ROUNDS = 1
-DEFAULT_LIBRARY_DISTRACT_COUNT_RANGE = (6, 10)
-
-# CLI-level defaults used by ``main.py``.
 DEFAULT_CLI_ROUNDS = 5
-DEFAULT_CLI_DISTRACT_MIN = 10
-DEFAULT_CLI_DISTRACT_MAX = 15
+DEFAULT_DISTRACT_COUNT = 10
 
 # -----------------------------------------------------------------------------
 # Sequence rendering / playback defaults

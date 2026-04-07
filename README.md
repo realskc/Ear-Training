@@ -119,7 +119,7 @@ python main.py absolute_train1 --set C D# F# A [options]
 
 - `--set`：目标音集合 `S`
 - `--rounds`：训练轮数
-- `--distract-min` / `--distract-max`：每轮干扰音数量范围，可设为 `0`
+- `--distract-count`：每轮固定干扰音数量，可设为 `0`
 - `--distract-duration`：每个干扰音的标称时长
 - `--distract-overlap`：相邻干扰音的重合时长
 - `--distract-fade-out`：每个干扰音结尾的淡出时长
@@ -241,7 +241,7 @@ play_legato_sequence(["C4", "E4", "G4"], 0.32, overlap=0.05, fade_out=0.03)
 absolute_train1(
     ["C", "D#", "F#", "A"],
     rounds=3,
-    distract_count_range=(0, 8),
+    distract_count=10,
 )
 ```
 

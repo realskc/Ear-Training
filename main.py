@@ -13,9 +13,8 @@ from typing import Sequence
 
 from ear_training import absolute_train1, play_note
 from ear_training.config import (
-    DEFAULT_CLI_DISTRACT_MAX,
-    DEFAULT_CLI_DISTRACT_MIN,
     DEFAULT_CLI_ROUNDS,
+    DEFAULT_DISTRACT_COUNT,
     DEFAULT_DISTRACT_DURATION,
     DEFAULT_DISTRACT_FADE_OUT,
     DEFAULT_DISTRACT_FINAL_TAIL,
@@ -146,16 +145,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     train_parser.add_argument("--rounds", type=positive_int, default=DEFAULT_CLI_ROUNDS, help="训练轮数")
     train_parser.add_argument(
-        "--distract-min",
+        "--distract-count",
         type=non_negative_int,
-        default=DEFAULT_CLI_DISTRACT_MIN,
-        help="每轮最少干扰音个数，可为 0",
-    )
-    train_parser.add_argument(
-        "--distract-max",
-        type=non_negative_int,
-        default=DEFAULT_CLI_DISTRACT_MAX,
-        help="每轮最多干扰音个数，可为 0",
+        default=DEFAULT_DISTRACT_COUNT,
+        help="每轮固定干扰音个数，可为 0",
     )
     train_parser.add_argument(
         "--distract-duration",
@@ -228,8 +221,6 @@ def validate_args(args: argparse.Namespace) -> Path:
     if args.command == "absolute_train1":
         if not args.set:
             raise CliInputError("--set 不能为空")
-        if args.distract_min > args.distract_max:
-            raise CliInputError("--distract-min 不能大于 --distract-max")
         if args.distract_overlap >= args.distract_duration:
             raise CliInputError("--distract-overlap 必须小于 --distract-duration")
         if args.legacy_gap is not None:
@@ -263,7 +254,7 @@ def run(argv: Sequence[str] | None = None) -> int:
             args.set,
             sound_dir=sound_dir,
             rounds=args.rounds,
-            distract_count_range=(args.distract_min, args.distract_max),
+            distract_count=args.distract_count,
             distract_duration=args.distract_duration,
             target_duration=args.target_duration,
             distract_overlap=args.distract_overlap,

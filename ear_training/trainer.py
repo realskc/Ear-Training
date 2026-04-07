@@ -13,11 +13,11 @@ from typing import Optional, Sequence
 
 from .notes import NoteFormatError, normalize_pitch_class, normalize_pitch_class_set
 from .config import (
+    DEFAULT_DISTRACT_COUNT,
     DEFAULT_DISTRACT_DURATION,
     DEFAULT_DISTRACT_FADE_OUT,
     DEFAULT_DISTRACT_FINAL_TAIL,
     DEFAULT_DISTRACT_OVERLAP,
-    DEFAULT_LIBRARY_DISTRACT_COUNT_RANGE,
     DEFAULT_LIBRARY_ROUNDS,
     DEFAULT_OCTAVE,
     DEFAULT_PRE_TARGET_GAP,
@@ -44,7 +44,7 @@ def absolute_train1(
     *,
     sound_dir: str | Path = DEFAULT_SOUND_DIR,
     rounds: int = DEFAULT_LIBRARY_ROUNDS,
-    distract_count_range: tuple[int, int] = DEFAULT_LIBRARY_DISTRACT_COUNT_RANGE,
+    distract_count: int = DEFAULT_DISTRACT_COUNT,
     distract_duration: float = DEFAULT_DISTRACT_DURATION,
     target_duration: float = DEFAULT_TARGET_DURATION,
     gap_seconds: float | None = None,
@@ -79,7 +79,7 @@ def absolute_train1(
         S: Target pitch-class subset used to draw the question note.
         sound_dir: Directory that contains local WAV samples.
         rounds: Number of rounds to run.
-        distract_count_range: Inclusive range for the number of distractor notes. Zero is allowed.
+        distract_count: Fixed number of distractor notes per round. Zero is allowed.
         distract_duration: Nominal duration of each distractor note.
         target_duration: Playback duration of the target note.
         gap_seconds: Deprecated compatibility alias for ``pre_target_gap``.
@@ -124,9 +124,8 @@ def absolute_train1(
     pitch_classes = normalize_pitch_class_set(S)
     pitch_classes = sample_bank.validate_pitch_class_subset(pitch_classes)
 
-    low, high = distract_count_range
-    if low < 0 or high < 0 or low > high:
-        raise ValueError("distract_count_range 必须形如 (非负整数, 非负整数) 且前者不大于后者")
+    if distract_count < 0:
+        raise ValueError("distract_count 不能小于 0")
 
     results: list[TrainRoundResult] = []
 
@@ -141,7 +140,6 @@ def absolute_train1(
     for round_index in range(1, rounds + 1):
         print(f"\n[Round {round_index}/{rounds}] 请听音...")
 
-        distract_count = rng.randint(low, high)
         distractor_samples = _choose_distractors(
             sample_bank=sample_bank,
             count=distract_count,
